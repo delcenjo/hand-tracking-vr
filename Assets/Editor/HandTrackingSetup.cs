@@ -1,6 +1,8 @@
 using System.Linq;
 using UnityEditor;
 using UnityEditor.PackageManager.UI;
+using UnityEditor.Rendering;
+using UnityEditor.Rendering.Universal;
 using UnityEditor.XR.Management;
 using UnityEditor.XR.Management.Metadata;
 using UnityEditor.XR.OpenXR.Features;
@@ -78,10 +80,41 @@ public static class HandTrackingSetup
             Debug.Log(grupo + ": " + string.Join(", ", openxr.GetFeatures().Where(f => f.enabled).Select(f => f.GetType().Name)));
         }
 
+        PasarMaterialesAURP();
+
         // Ajustes que pide Meta para Quest
         PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel32;
         PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
         PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
         AssetDatabase.SaveAssets();
+    }
+
+    // Los samples de XRI traen materiales del render integrado y en URP salen en rosa
+    [MenuItem("Hand Tracking/Pasar materiales de los samples a URP", priority = 3)]
+    public static void PasarMaterialesAURP()
+    {
+        var interactable = AssetDatabase.LoadAssetAtPath<Shader>("Assets/Samples/XR Interaction Toolkit/3.7.0/Starter Assets/Shaders/Interactable.shadergraph");
+        int n = 0;
+        foreach (var guid in AssetDatabase.FindAssets("t:Material", new[] { "Assets/Samples" }))
+        {
+            var m = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(guid));
+            if (m == null) continue;
+            var nombre = m.shader.name;
+            if (nombre == "Standard" || nombre == "Standard (Specular setup)")
+            {
+                MaterialUpgrader.Upgrade(m, new StandardUpgrader(nombre), MaterialUpgrader.UpgradeFlags.None);
+            }
+            else if (nombre == "XRIT/BiRP_Fresnel" && interactable != null)
+            {
+                var textura = m.GetTexture("_MainTex");
+                m.shader = interactable;
+                if (textura != null) m.SetTexture("_MainTexture", textura);
+            }
+            else continue;
+            EditorUtility.SetDirty(m);
+            n++;
+        }
+        AssetDatabase.SaveAssets();
+        Debug.Log("Materiales pasados a URP: " + n);
     }
 }
