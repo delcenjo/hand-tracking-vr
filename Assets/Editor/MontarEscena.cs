@@ -9,6 +9,8 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.XR.Hands;
+using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.Locomotion.Gravity;
 using UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation;
 
 public static class MontarEscena
@@ -29,7 +31,6 @@ public static class MontarEscena
         AssetDatabase.CopyAsset(escenaSynty, escenaFinal);
         var escena = EditorSceneManager.OpenScene(escenaFinal, OpenSceneMode.Single);
 
-        // La cámara de la demo de Synty mira a la plaza: ahí ponemos la zona de juego
         var camSynty = escena.GetRootGameObjects().First(r => r.GetComponent<Camera>() != null).transform;
         Physics.SyncTransforms();
         var plaza = Physics.Raycast(camSynty.position, camSynty.forward, out var golpe, 200) ? golpe.point : Vector3.zero;
@@ -37,7 +38,6 @@ public static class MontarEscena
         foreach (var raiz in escena.GetRootGameObjects())
             if (raiz.GetComponent<Camera>() != null) Object.DestroyImmediate(raiz);
 
-        // Mesa, jugador y gestores de la demo de manos de XRI
         var demo = EditorSceneManager.OpenScene(escenaManos, OpenSceneMode.Additive);
         var traidos = new List<GameObject>();
         foreach (var raiz in demo.GetRootGameObjects())
@@ -60,10 +60,21 @@ public static class MontarEscena
         origen.transform.SetPositionAndRotation(centro + giro * new Vector3(0, 0, -0.55f), giro);
         var cabeza = origen.GetComponentInChildren<Camera>(true).transform;
 
-        // Teletransporte por todo el suelo del pueblo
+        var capaTeleport = InteractionLayerMask.GetMask("Teleport");
+        var pisables = new[] { "Ground", "Floor", "Stairs", "Ramp" };
         foreach (var col in Object.FindObjectsByType<MeshCollider>(FindObjectsInactive.Include, FindObjectsSortMode.None))
-            if (col.name.Contains("Ground") && col.GetComponent<TeleportationArea>() == null)
-                col.gameObject.AddComponent<TeleportationArea>();
+        {
+            if (!pisables.Any(p => col.name.Contains(p))) continue;
+            var area = col.GetComponent<TeleportationArea>();
+            if (area == null) area = col.gameObject.AddComponent<TeleportationArea>();
+            area.interactionLayers = capaTeleport;
+        }
+
+        foreach (var g in origen.GetComponentsInChildren<GravityProvider>(true))
+        {
+            g.useGravity = true;
+            PrefabUtility.RecordPrefabInstancePropertyModifications(g);
+        }
 
         var mat = Material("Bola", new Color(1f, 0.5f, 0.2f));
 
@@ -87,6 +98,7 @@ public static class MontarEscena
         var lista = EditorBuildSettings.scenes.Where(s => s.path != escenaFinal).ToList();
         lista.Insert(0, new EditorBuildSettingsScene(escenaFinal, true));
         EditorBuildSettings.scenes = lista.ToArray();
+        AssetDatabase.SaveAssets();
         Debug.Log($"Escena montada en {sitio} (suelo {suelo:0.00})");
     }
 
@@ -107,7 +119,6 @@ public static class MontarEscena
         AssetDatabase.Refresh();
     }
 
-    // Busca una zona plana del pueblo sin edificios encima
     static Vector3 BuscarSitio(List<GameObject> ignorar, Vector3 plaza, out float suelo)
     {
         Physics.SyncTransforms();
@@ -214,11 +225,12 @@ public static class MontarEscena
     static void CrearCartel(Transform padre, Vector3 pos, Quaternion giro)
     {
         var t = Texto(padre, "Cartel",
-            "Pulgar arriba: bola nueva\nPulgar abajo: quitar bolas\nShaka: confeti\n\nCoge las bolas y mételas en la canasta", 0.9f);
+            "Pulgar arriba: bola nueva\nPulgar abajo: quitar bolas\nShaka: confeti\n\n" +
+            "Moverse: pulgar e índice estirados, el resto cerrados\napunta al suelo y pellizca\n\n" +
+            "Coge las bolas y mételas en la canasta", 0.9f);
         t.transform.parent.SetPositionAndRotation(pos, giro);
     }
 
-    // El texto va dentro de un objeto normal: es el que se coloca
     static TextMeshPro Texto(Transform padre, string nombre, string contenido, float tam)
     {
         var contenedor = new GameObject(nombre);
