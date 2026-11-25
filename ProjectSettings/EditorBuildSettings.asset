@@ -7,7 +7,7 @@ EditorBuildSettings:
   m_Scenes:
   - enabled: 1
     path: Assets/Scenes/HandTracking.unity
-    guid: 4c31046874a93b3cc919722dee0c8906
+    guid: 03efeed6d58967e46a9c89a755740801
   - enabled: 1
     path: Assets/Scenes/SampleScene.unity
     guid: 99c9720ab356a0642a771bea13969a05
