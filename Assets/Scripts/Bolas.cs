@@ -93,7 +93,7 @@ public class Bolas : MonoBehaviour
         {
             if (b == null || b.isSelected) continue;
             var p = b.transform.position;
-            if (p.y > salida.position.y - 0.9f && Vector3.Distance(p, salida.position) < 20f) continue;
+            if (p.y > salida.position.y - 0.6f &&Vector3.Distance(p, salida.position) < 20f) continue;
 
             var rb = b.GetComponent<Rigidbody>();
             rb.linearVelocity = Vector3.zero;
