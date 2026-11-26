@@ -9,7 +9,9 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 using UnityEngine.XR.Hands;
+using Unity.XR.CoreUtils;
 using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
 using UnityEngine.XR.Interaction.Toolkit.Locomotion.Gravity;
 using UnityEngine.XR.Interaction.Toolkit.Locomotion.Teleportation;
 
@@ -27,8 +29,15 @@ public static class MontarEscena
     {
         RecursosTMP();
 
-        if (File.Exists(escenaFinal)) AssetDatabase.DeleteAsset(escenaFinal);
-        AssetDatabase.CopyAsset(escenaSynty, escenaFinal);
+        if (File.Exists(escenaFinal))
+        {
+            File.Copy(escenaSynty, escenaFinal, true);
+            AssetDatabase.ImportAsset(escenaFinal, ImportAssetOptions.ForceUpdate);
+        }
+        else
+        {
+            AssetDatabase.CopyAsset(escenaSynty, escenaFinal);
+        }
         var escena = EditorSceneManager.OpenScene(escenaFinal, OpenSceneMode.Single);
 
         var camSynty = escena.GetRootGameObjects().First(r => r.GetComponent<Camera>() != null).transform;
@@ -38,11 +47,12 @@ public static class MontarEscena
         foreach (var raiz in escena.GetRootGameObjects())
             if (raiz.GetComponent<Camera>() != null) Object.DestroyImmediate(raiz);
 
+        var fuera = new[] { "Environment", "Tutorial Player", "Table", "TableHandle" };
         var demo = EditorSceneManager.OpenScene(escenaManos, OpenSceneMode.Additive);
         var traidos = new List<GameObject>();
         foreach (var raiz in demo.GetRootGameObjects())
         {
-            if (raiz.name == "Environment" || raiz.name == "Tutorial Player" || raiz.GetComponent<Light>() != null) continue;
+            if (fuera.Contains(raiz.name) || raiz.GetComponent<Light>() != null) continue;
             SceneManager.MoveGameObjectToScene(raiz, escena);
             traidos.Add(raiz);
         }
@@ -76,12 +86,19 @@ public static class MontarEscena
             PrefabUtility.RecordPrefabInstancePropertyModifications(g);
         }
 
+        foreach (var t in origen.GetComponentsInChildren<Transform>(true).Where(t => t.name == "Hand Teleport Interactor").ToList())
+        {
+            t.gameObject.SetActive(false);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(t.gameObject);
+        }
+
         var mat = Material("Bola", new Color(1f, 0.5f, 0.2f));
 
         var juego = new GameObject("Juego");
+        CrearMesa(juego.transform, centro, giro);
         var salida = new GameObject("Salida bolas").transform;
         salida.SetParent(juego.transform);
-        salida.position = centro + giro * new Vector3(0, 1.2f, 0.45f);
+        salida.position = centro + giro * new Vector3(0, 0.95f, 0.05f);
         var bolas = juego.AddComponent<Bolas>();
         bolas.salida = salida;
         bolas.material = mat;
@@ -170,19 +187,45 @@ public static class MontarEscena
         return mejor;
     }
 
-    static Material Material(string nombre, Color color)
+    static Material Material(string nombre, Color color, string shader = "Universal Render Pipeline/Lit")
     {
         if (!AssetDatabase.IsValidFolder("Assets/Materiales")) AssetDatabase.CreateFolder("Assets", "Materiales");
         var ruta = $"Assets/Materiales/{nombre}.mat";
         var m = AssetDatabase.LoadAssetAtPath<Material>(ruta);
         if (m == null)
         {
-            m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            m = new Material(Shader.Find(shader));
             AssetDatabase.CreateAsset(m, ruta);
         }
         m.color = color;
         EditorUtility.SetDirty(m);
         return m;
+    }
+
+    static void CrearMesa(Transform padre, Vector3 pos, Quaternion giro)
+    {
+        var mesa = new GameObject("Mesa");
+        mesa.transform.SetParent(padre);
+        mesa.transform.SetPositionAndRotation(pos, giro);
+        var mat = Material("Mesa", new Color(0.55f, 0.38f, 0.25f));
+
+        void Pieza(string nombre, Vector3 centro, Vector3 tam)
+        {
+            var p = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            p.name = nombre;
+            p.transform.SetParent(mesa.transform, false);
+            p.transform.localPosition = centro;
+            p.transform.localScale = tam;
+            p.GetComponent<Renderer>().sharedMaterial = mat;
+        }
+        Pieza("Tablero", new Vector3(0, 0.74f, 0.05f), new Vector3(1.2f, 0.04f, 0.6f));
+        Pieza("Borde 1", new Vector3(0, 0.78f, 0.34f), new Vector3(1.2f, 0.05f, 0.02f));
+        Pieza("Borde 2", new Vector3(0.59f, 0.78f, 0.05f), new Vector3(0.02f, 0.05f, 0.6f));
+        Pieza("Borde 3", new Vector3(-0.59f, 0.78f, 0.05f), new Vector3(0.02f, 0.05f, 0.6f));
+        Pieza("Borde 4", new Vector3(0, 0.78f, -0.24f), new Vector3(1.2f, 0.05f, 0.02f));
+        foreach (var x in new[] { -0.55f, 0.55f })
+        foreach (var z in new[] { -0.2f, 0.3f })
+            Pieza("Pata", new Vector3(x, 0.36f, z), new Vector3(0.05f, 0.72f, 0.05f));
     }
 
     static void CrearCanasta(Transform padre, Vector3 pos, Quaternion giro, Bolas bolas)
@@ -226,7 +269,7 @@ public static class MontarEscena
     {
         var t = Texto(padre, "Cartel",
             "Pulgar arriba: bola nueva\nPulgar abajo: quitar bolas\nShaka: confeti\n\n" +
-            "Moverse: pulgar e índice estirados, el resto cerrados\napunta al suelo y pellizca\n\n" +
+            "Moverse: apunta al suelo, pellizca y suelta\nGirar: palma hacia arriba y pellizca\n\n" +
             "Coge las bolas y mételas en la canasta", 0.9f);
         t.transform.parent.SetPositionAndRotation(pos, giro);
     }
@@ -269,11 +312,25 @@ public static class MontarEscena
             UnityEventTools.AddPersistentListener(g.alHacerGesto, accion);
         }
 
+        var rayo = Material("Rayo", Color.white, "Universal Render Pipeline/Unlit");
+        var xrOrigen = origen.GetComponent<XROrigin>();
+        var teleport = origen.GetComponentInChildren<TeleportationProvider>(true);
+        var interactores = origen.GetComponentsInChildren<NearFarInteractor>(true);
+
         foreach (var mano in manos)
         {
             Gesto(mano, "Hand Poses/Thumbs Up.asset", bolas.CrearBola);
             Gesto(mano, "Hand Poses/Thumbs Down.asset", bolas.QuitarBolas);
             Gesto(mano, "Hand Shapes/Shaka Hand Shape.asset", bolas.Confeti);
+
+            var nombre = mano.handedness == Handedness.Left ? "Left Hand" : "Right Hand";
+            var mov = mano.gameObject.AddComponent<MovimientoMano>();
+            mov.mano = mano;
+            mov.origen = xrOrigen;
+            mov.teleport = teleport;
+            mov.material = rayo;
+            mov.interactor = interactores.FirstOrDefault(i => i.GetComponentsInParent<Transform>(true).Any(p => p.name == nombre));
+            if (mov.interactor == null) Debug.LogWarning("Sin interactor para " + nombre);
         }
         Debug.Log("Gestos en " + manos.Count + " manos");
     }
